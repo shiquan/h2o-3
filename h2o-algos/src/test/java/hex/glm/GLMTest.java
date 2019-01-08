@@ -1697,6 +1697,58 @@ public class GLMTest  extends TestUtil {
     }
   }
 
+  @Test //PUBDEV-1839
+  public void testCitibikewithNegBinomial() throws Exception {
+    GLMModel model = null;
+    Frame tfr = parse_test_file("smalldata/jira/pubdev_1839_repro_train.csv");
+    Frame vfr = parse_test_file("smalldata/jira/pubdev_1839_repro_test.csv");
+
+    try {
+      Scope.enter();
+      Scope.track(tfr, vfr);
+      GLMParameters params = new GLMParameters(Family.negbinomial);
+      params._response_column = "bikes";
+      params._train = tfr._key;
+      params._valid = vfr._key;
+      params._optimize_theta=true;
+      GLM glm = new GLM(params);
+      model = glm.trainModel().get();
+      Scope.track_generic(model);
+      Frame prediction = model.score(tfr);
+      testScoring(model,vfr);
+    } finally {
+      Scope.exit();
+    }
+  }
+
+  @Test //PUBDEV-1839
+  public void testMultinomial() throws Exception {
+    GLMModel model = null;
+    Frame tfr = parse_test_file("/Users/wendycwong/temp/glm_mult_slow/multinomial");
+    Frame vfr = parse_test_file("/Users/wendycwong/temp/glm_mult_slow/multinomial");
+
+    try {
+      Scope.enter();
+      Vec v = tfr.remove("C55");
+      Scope.track(v);
+      Scope.track(tfr, vfr);
+      tfr.add("C55", v.toCategoricalVec());
+      GLMParameters params = new GLMParameters(Family.multinomial);
+      params._response_column = "C55";
+      params._train = tfr._key;
+      params._valid = vfr._key;
+      params._optimize_theta=true;
+
+      GLM glm = new GLM(params);
+      model = glm.trainModel().get();
+      Scope.track_generic(model);
+      Frame prediction = model.score(tfr);
+      testScoring(model,vfr);
+    } finally {
+      Scope.exit();
+    }
+  }
+  
   @Test
   public void testCitibikeReproPUBDEV1953() throws Exception {
     GLMModel model = null;

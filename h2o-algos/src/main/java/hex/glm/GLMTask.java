@@ -31,6 +31,7 @@ import java.util.Arrays;
  * @author tomasnykodym
  */
 public abstract class GLMTask  {
+  final static double EPS=1e-10;
   static class NullDevTask extends MRTask<NullDevTask> {
     double _nullDev;
     final double [] _ymu;
@@ -626,7 +627,7 @@ public abstract class GLMTask  {
 
     public void map(Chunk [] chks) {
       _gradient = MemoryManager.malloc8d(_beta.length);
-      Chunk response = chks[chks.length-1];
+      Chunk response = chks[chks.length-_dinfo._responses];
       Chunk weights = _dinfo._weights?chks[_dinfo.weightChunkId()]:new C0DChunk(1,response._len);
       double [] ws = weights.getDoubles(MemoryManager.malloc8d(weights._len),0,weights._len);
       double [] ys = response.getDoubles(MemoryManager.malloc8d(weights._len),0,response._len);
@@ -713,7 +714,7 @@ public abstract class GLMTask  {
           double mu = Math.exp(eta);
           double yr = ys[i];
           double diff = mu - yr;
-          l += ws[i] * (yr == 0?mu:yr*Math.log(yr/mu) + diff);
+          l += ws[i] * (yr == 0?mu:yr*Math.log(yr/mu) + diff);  // todo: looks wrong to me... double check
           es[i] = ws[i]*diff;
         }
       }
@@ -721,6 +722,47 @@ public abstract class GLMTask  {
     }
   }
 
+  static class GLMNegBinomialGradientTask extends GLMGradientTask {
+    private final GLMWeightsFun _glmf;
+    public GLMNegBinomialGradientTask(Key jobKey, DataInfo dinfo, GLMParameters parms, double lambda, double[] beta) {
+      super(jobKey, dinfo, parms._obj_reg, lambda, beta);
+      _glmf = new GLMWeightsFun(parms);
+    }
+    @Override protected void computeGradientMultipliers(double [] es, double [] ys, double [] ws) {
+      double l = 0;
+      for(int i = 0; i < es.length; ++i) {
+        if (Double.isNaN(ys[i]) || ws[i] == 0) {
+          es[i] = 0;
+        } else {
+          double eta = es[i];
+          double mu = _glmf.linkInv(eta);
+          mu = mu==0?EPS:mu;
+          double yr = ys[i];
+          double sum = mu + _glmf._invTheta;
+          double sumr = yr + _glmf._invTheta;
+          double muDeriv = _glmf.linkInvDeriv(mu);
+          es[i] = ws[i]*(sumr/sum-_glmf._invTheta/mu)*muDeriv; // gradient of -llh
+          l -= ws[i] * (sumOper(yr, _glmf._invTheta,0)+yr*Math.log(_glmf._invTheta)+_glmf._invTheta*Math.log(mu))-
+                  sumr*Math.log(sum); // store the -llh
+        }
+      }
+      _likelihood = l;
+    }
+  }
+
+  static double sumOper(double y, double r, int opVal) {
+    double summation = 0.0;
+    if (y > 0) {
+      r = r < 1 ? 1 : r;
+      double rminus1 = r - 1;
+      for (int val = (int) y; val > 1; val--) {
+        double rminuspval = rminus1+val;
+        summation += opVal==0?Math.log(rminuspval / val):(opVal==1?1.0/rminuspval:1.0/(rminuspval*rminuspval));
+      }
+    }
+    return summation;
+  }
+  
   static class GLMQuasiBinomialGradientTask extends GLMGradientTask {
     private final GLMWeightsFun _glmf;
     public GLMQuasiBinomialGradientTask(Key jobKey, DataInfo dinfo, GLMParameters parms, double lambda, double[] beta) {
@@ -1475,6 +1517,44 @@ public abstract class GLMTask  {
     }
   }
 
+  public static class GLMNegbinomialResppdate extends FrameTask2< GLMNegbinomialResppdate> {
+    private final double [] _beta; // updated  value of beta
+    private final GLMWeightsFun _glmf;
+
+    private transient GLMWeights _w;
+    transient private double _sparseOffset;
+    private transient Chunk _updatedResps;
+    
+    public  GLMNegbinomialResppdate(DataInfo dinfo, Key jobKey, double [] beta, GLMWeightsFun glmw) {
+      super(null, dinfo, jobKey);
+      _beta = beta;
+      _glmf = glmw;
+
+    }
+
+    @Override public void chunkInit(){
+      // initialize
+      if(_sparse)
+        _sparseOffset = GLM.sparseOffset(_beta,_dinfo);
+      _w = new GLMWeights();
+    }
+
+
+    @Override public void map(Chunk [] chks) {
+      _updatedResps = chks[chks.length-1];
+      super.map(chks);
+    }
+
+    @Override
+    protected void processRow(Row r) {
+      if(r.isBad() || r.weight == 0) return;
+      double y = r.response(0);
+      final int numStart = _dinfo.numStart();
+      _glmf.computeWeights(y, r.innerProduct(_beta) + _sparseOffset, r.offset, r.weight, _w);
+      _updatedResps.set(r.cid, _w.mu);
+    }
+  } 
+
   /**
    * One iteration of glm, computes weighted gram matrix and t(x)*y vector and t(y)*y scalar.
    *
@@ -1493,7 +1573,7 @@ public abstract class GLMTask  {
     long _nobs;
     public double _likelihood;
     private transient GLMWeights _w;
-//    final double _lambda;
+    //    final double _lambda;
     double wsum, wsumu;
     double _sumsqe;
     int _c = -1;
@@ -1516,13 +1596,14 @@ public abstract class GLMTask  {
     @Override public boolean handlesSparseData(){return true;}
 
     transient private double _sparseOffset;
+
     @Override
     public void chunkInit() {
       // initialize
       _gram = new Gram(_dinfo.fullN(), _dinfo.largestCat(), _dinfo.numNums(), _dinfo._cats,true);
       _xy = MemoryManager.malloc8d(_dinfo.fullN()+1); // + 1 is for intercept
       if(_sparse)
-         _sparseOffset = GLM.sparseOffset(_beta,_dinfo);
+        _sparseOffset = GLM.sparseOffset(_beta,_dinfo);
       _w = new GLMWeights();
     }
 
@@ -1544,7 +1625,7 @@ public abstract class GLMTask  {
         w  = r.weight * d;
       } else if(_beta != null) {
         _glmf.computeWeights(y, r.innerProduct(_beta) + _sparseOffset, r.offset, r.weight, _w);
-        w = _w.w;
+        w = _w.w; // hessian without the xij xik part
         wz = w*_w.z;
         _likelihood += _w.l;
       } else {
@@ -1610,6 +1691,50 @@ public abstract class GLMTask  {
     public boolean hasNaNsOrInf() {
       return ArrayUtils.hasNaNsOrInfs(_xy) || _gram.hasNaNsOrInfs();
     }
+  }
+
+  public static class GLMOptimizeThetaTask extends FrameTask2<GLMOptimizeThetaTask> {
+    double []_beta;
+    double _gradient=0;
+    double _hess=0;
+    double _invTheta;
+    double _theta;
+    double _newInvTheta;
+    
+    public  GLMOptimizeThetaTask(Key jobKey, DataInfo dinfo, double invTheta,double [] beta) {
+      super(null,dinfo,jobKey);
+      _beta = beta;
+      _invTheta = invTheta;
+      _theta = 1.0/invTheta;
+      
+    }
+    
+
+    @Override
+    protected void processRow(Row r) { // called for every row in the chunk
+      if(r.isBad() || r.weight == 0) return;
+      double y = r.response(0);
+      double ym = r.response(1);
+      double summ = ym+_invTheta;
+      double sumr = y+_invTheta;
+      double logSumm = Math.log(ym+_invTheta);
+      _gradient += sumOper(y,_invTheta,1)+y*_theta+Math.log(ym)-logSumm-sumr/summ;
+      _hess += -sumOper(y, _invTheta, 2)-y*_theta*_theta-logSumm/summ-(summ-sumr)/(summ*summ);
+      
+    }
+    
+    @Override
+    public void reduce(GLMOptimizeThetaTask git){
+      _gradient += git._gradient;
+      _hess += git._hess;
+      
+    }
+    
+    @Override
+    public void postGlobal() {
+      _newInvTheta = _invTheta-_gradient/_hess;
+    }
+    
   }
 
  /* public static class GLMCoordinateDescentTask extends FrameTask2<GLMCoordinateDescentTask> {

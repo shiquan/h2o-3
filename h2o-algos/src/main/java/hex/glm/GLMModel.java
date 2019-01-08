@@ -145,6 +145,17 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
     }
   }
 
+  @Override
+  public double likelihood(double w, double y, double f) {
+    if (w == 0) {
+      return 0;
+    } else if (w == 1) {
+      return w*(_parms.likelihood(y, f));
+    } else {
+      return Double.NaN; 
+    }
+  }
+
   public GLMModel addSubmodel(Submodel sm) {
     _output._submodels = ArrayUtils.append(_output._submodels,sm);
     _output.setSubmodelIdx(_output._submodels.length-1);
@@ -183,6 +194,12 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
     public Solver _solver = Solver.AUTO;
     public double _tweedie_variance_power;
     public double _tweedie_link_power;
+    public double _theta; // 1/k and is used by negative binomial distribution only
+    public double _invTheta;
+    public double _trainDataTheta;  // stored the theta from training data
+    public double _predictDataTheta;  // store the theta calculated from scoring/prediction
+    public int _maxit = 5;    // number of iterations to optimize theta
+    public boolean _optimize_theta = false; // when to optimize theta, false means no optimization
     public double [] _alpha = null;
     public double [] _lambda = null;
     public MissingValuesHandling _missing_values_handling = MissingValuesHandling.MeanImputation;
@@ -241,6 +258,10 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
         glm.hide("_tweedie_variance_power","Only applicable with Tweedie family");
         glm.hide("_tweedie_link_power","Only applicable with Tweedie family");
       }
+      if(_family != Family.negbinomial) {
+        glm.hide("_theta","Only applicable with Negative Binomial family");
+        glm.hide("_optimize_theta", "Only applicable with Negative Binomial family");
+      }
       if(_remove_collinear_columns && !_intercept)
         glm.error("_intercept","Remove colinear columns option is currently not supported without intercept");
       if(_beta_constraints != null) {
@@ -291,8 +312,10 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
               throw new IllegalArgumentException("Incompatible link function for selected family. Only logit is allowed for family=" + _family + ". Got " + _link);
             break;
           case poisson:
+          case negbinomial:  
             if (_link != Link.log && _link != Link.identity)
-              throw new IllegalArgumentException("Incompatible link function for selected family. Only log and identity links are allowed for family=poisson.");
+              throw new IllegalArgumentException("Incompatible link function for selected family. Only log and " +
+                      "identity links are allowed for family=poisson and family=negbinomimal.");
             break;
           case gamma:
             if (_link != Link.inverse && _link != Link.log && _link != Link.identity)
@@ -330,7 +353,13 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
       this(f,l,lambda,alpha,twVar,twLnk,null);
     }
 
-    public GLMParameters(Family f, Link l, double [] lambda, double [] alpha, double twVar, double twLnk, String[] interactions){
+    public GLMParameters(Family f, Link l, double [] lambda, double [] alpha, double twVar, double twLnk, String[] interactions) {
+      this(f,l,lambda,alpha,twVar,twLnk,interactions,1);
+    }
+    
+
+    public GLMParameters(Family f, Link l, double [] lambda, double [] alpha, double twVar, double twLnk, 
+                         String[] interactions, double theta){
       this._lambda = lambda;
       this._alpha = alpha;
       this._tweedie_variance_power = twVar;
@@ -338,6 +367,8 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
       _interactions=interactions;
       _family = f;
       _link = l;
+      this._theta=theta;
+      this._invTheta = 1.0/theta;
     }
 
     public final double variance(double mu){
@@ -389,6 +420,10 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
         case poisson:
           if( yr == 0 ) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
+        case negbinomial:
+          ym = ym>0?ym:1e-12;
+          return (_link.equals(Link.log)?(2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((yr+_invTheta)/(yr+_invTheta)))):
+                  (2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((ym+_invTheta)/(yr+_invTheta)))));          
         case gamma:
           if( yr == 0 ) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);
@@ -467,35 +502,12 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           throw new RuntimeException("unexpected link function id  " + this);
       }
     }
-
-    public final double linkInvDeriv(double x) {
-      switch(_link) {
-        case identity:
-          return 1;
-        case logit:
-          double g = Math.exp(-x);
-          double gg = (g + 1) * (g + 1);
-          return g / gg;
-        case ologit:
-          return (x-x*x);
-        case log:
-          //return (x == 0)?MAX_SQRT:1/x;
-          return Math.max(Math.exp(x), Double.MIN_NORMAL);
-        case inverse:
-          double xx = (x < 0) ? Math.min(-1e-5, x) : Math.max(1e-5, x);
-          return -1 / (xx * xx);
-//        case tweedie:
-//          double vp = (1. - _tweedie_link_power) / _tweedie_link_power;
-//          return (1/ _tweedie_link_power) * Math.pow(x, vp);
-        default:
-          throw new RuntimeException("unexpected link function id  " + this);
-      }
-    }
-
+    
     // supported families
     public enum Family {
       gaussian(Link.identity), binomial(Link.logit), quasibinomial(Link.logit),poisson(Link.log),
-      gamma(Link.inverse), multinomial(Link.multinomial), tweedie(Link.tweedie), ordinal(Link.ologit);
+      gamma(Link.inverse), multinomial(Link.multinomial), tweedie(Link.tweedie), ordinal(Link.ologit), 
+      negbinomial(Link.log);
       public final Link defaultLink;
       Family(Link link){defaultLink = link;}
     }
@@ -528,14 +540,23 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
     final Link _link;
     final double _var_power;
     final double _link_power;
+    double _theta;  // used by negative binomial, 0 < _theta <= 1
+    double _invTheta;
+    final boolean _optimize_theta;
+    //final boolean _optimizetheta;
     final NormalDistribution _dprobit = new NormalDistribution(0,1);  // get the normal distribution
+    
+    public GLMWeightsFun(GLMParameters parms) {this(parms._family,parms._link, parms._tweedie_variance_power, 
+            parms._tweedie_link_power, parms._theta, parms._optimize_theta);}
 
-    public GLMWeightsFun(GLMParameters parms) {this(parms._family,parms._link, parms._tweedie_variance_power, parms._tweedie_link_power);}
-    public GLMWeightsFun(Family fam, Link link, double var_power, double link_power) {
+    public GLMWeightsFun(Family fam, Link link, double var_power, double link_power, double theta, boolean optimizeT) {
       _family = fam;
       _link = link;
       _var_power = var_power;
       _link_power = link_power;
+      _theta = theta;
+      _invTheta = 1/theta;
+      _optimize_theta = optimizeT;
     }
 
     public final double link(double x) {
@@ -562,6 +583,42 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           throw new RuntimeException("unknown link function " + this);
       }
     }
+    
+    public final double linkInvDeriv(double x) {
+      switch(_link) {
+        case identity:
+          return 1;
+        case logit:
+          double g = Math.exp(-x);
+          double gg = (g + 1) * (g + 1);
+          return g / gg;
+        case ologit:
+          return (x-x*x);
+        case log:
+          return Math.max(x, Double.MIN_NORMAL);
+        case inverse:
+          double xx = (x < 0) ? Math.min(-1e-5, x) : Math.max(1e-5, x);
+          return -1 / (xx * xx);
+//        case tweedie:
+//          double vp = (1. - _tweedie_link_power) / _tweedie_link_power;
+//          return (1/ _tweedie_link_power) * Math.pow(x, vp);
+        default:
+          throw new RuntimeException("unexpected link function id  " + this);
+      }
+    }
+
+
+    public final double linkInvDeriv2(double x) {
+      switch(_link) {
+        case identity:
+          return 0;
+        case log:
+          return Math.max(x, Double.MIN_NORMAL);
+        default:
+          throw new RuntimeException("unexpected link function id  " + this);
+      }
+    }
+
 
     // calculate the derivative of the link function
     public final double linkDeriv(double x) { // note: compute an inverse of what R does
@@ -627,6 +684,8 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           return res < 1e-6?1e-6:res;
         case poisson:
           return mu;
+        case negbinomial:
+          return (mu+mu*mu*_theta);
         case gamma:
           return mu * mu;
         case tweedie:
@@ -651,6 +710,9 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
         case poisson:
           if( yr == 0 ) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
+        case negbinomial:
+          ym = ym>0?ym:1e-12;
+          return 2*(_invTheta*Math.log(yr/ym)-(yr+_invTheta)*Math.log((yr+_invTheta)/(ym+_invTheta)));
         case gamma:
           if( yr == 0 ) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);
@@ -691,12 +753,23 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
         case gamma:
         case tweedie:
           x.dev = w*deviance(yr,ym);
-          x.l = x.dev;
+          x.l = x.dev; // todo: verify that this is not true for Poisson distribution
+          break;
+        case negbinomial:
+          x.dev = w*deviance(yr,ym);
+          x.l = likelihood(yr,ym);
           break;
         default:
           throw new RuntimeException("unknown family " + _family);
       }
     }
+    
+    public final double likelihood(double w, double yr, double ym) {
+      if (w==0)
+        return 0;
+      return w*likelihood(yr, ym);
+    }
+    
     public final double likelihood(double yr, double ym) {
       switch (_family) {
         case gaussian:
@@ -708,6 +781,9 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
         case poisson:
           if (yr == 0) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
+        case negbinomial:
+          return (-GLMTask.sumOper(yr, _invTheta, 0)-yr*Math.log(_invTheta)-_invTheta*Math.log(ym)+
+                  (yr+_invTheta)*Math.log(ym+_invTheta));
         case gamma:
           if (yr == 0) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);
@@ -721,10 +797,20 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
     public GLMWeights computeWeights(double y, double eta, double off, double w, GLMWeights x) {
       double etaOff = eta + off;
       x.mu = linkInv(etaOff);
+      x.mu = x.mu==0?hex.glm.GLMTask.EPS:x.mu;
       double var = variance(x.mu);//Math.max(1e-5, variance(x.mu)); // avoid numerical problems with 0 variance
       double d = linkDeriv(x.mu);
-      x.w = w / (var * d * d);
-      x.z = eta + (y - x.mu) * d;
+      if (_family.equals(Family.negbinomial)) {
+        double sumr = y+_invTheta;
+        double sum = x.mu+_invTheta;
+        double d2 = linkInvDeriv(x.mu);
+        d = (_invTheta/(x.mu*x.mu)-sumr/(sum*sum))*d2*d2+((sumr/sum)-_invTheta/x.mu)*linkInvDeriv2(x.mu);
+        x.w = w*d;
+        x.z = eta + (y-x.mu)/d;
+      } else {
+        x.w = w / (var * d * d);  // formula did not quite work with negative binomial
+        x.z = eta + (y - x.mu) * d;
+      }
       likelihoodAndDeviance(y,x,w);
       return x;
     }
@@ -737,6 +823,7 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
     public final double devianceTest;
     public final int    [] idxs;
     public final double [] beta;
+    public double _trainTheta;
 
     public double [] getBeta(double [] beta) {
       if(idxs != null){
@@ -816,6 +903,7 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
     double [][] _vcov;
     private double _dispersion;
     private boolean _dispersionEstimated;
+    double _trainTheta;
 
     public boolean hasPValues(){return _zvalues != null;}
     public double [] stdErr(){
