@@ -1,5 +1,6 @@
 setwd(normalizePath(dirname(R.utils::commandArgs(asValues=TRUE)$"f")))
 source("../../../scripts/h2o-r-test-setup.R")
+library(MASS)
 ##
 # Comparison of H2O to R with varying link functions for the Negative Binomial family on prostate dataset
 # Link functions: log (canonical link)
@@ -12,16 +13,22 @@ test.linkFunctions <- function() {
 	h2o.data = h2o.uploadFile(locate("smalldata/prostate/prostate_complete.csv.zip"), destination_frame="h2o.data")    
 	R.data = as.data.frame(as.matrix(h2o.data))
 	
+	
+	browser()
+	
+	
+	
 	print("Testing for family: Negative Binomial")
 	print("Set variables for h2o.")
 	myY = "GLEASON"
 	myX = c("ID","AGE","RACE","CAPSULE","DCAPS","PSA","VOL","DPROS")
 	print("Define formula for R")
 	R.formula = (R.data[,"GLEASON"]~.) 
-
-	print("Create models with canonical link: LOG")
-	model.h2o.negbinomial.log <- h2o.glm(x=myX, y=myY, training_frame=h2o.data, family="negbinomial", link="log",alpha=0.5, lambda=0, nfolds=0)
-	model.R.poisson.log <- glm(formula=R.formula, data=R.data[,2:9], family=poisson(link=log), na.action=na.omit)
+  ##################  Test with fixed theta and log link
+	print("Create models with canonical link: LOG and fixed theta")
+	h2onegbinommialLog <- h2o.glm(x=myX, y=myY, training_frame=h2o.data, family="negbinomial", link="log",alpha=0.5, 
+	                                     lambda=0, nfolds=0, optimize_theta=FALSE, theta=1.0)
+  rnegbinommialLog <- glm(formula=R.formula, data=R.data[,2:9], family=negative.binomial(link=log, theta=1.0), na.action=na.omit)
 	
 	print("Compare model deviances for link function log")
 	deviance.h2o.log = model.h2o.poisson.log@model$training_metrics@metrics$residual_deviance / model.h2o.poisson.log@model$training_metrics@metrics$null_deviance

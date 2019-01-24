@@ -743,7 +743,9 @@ public abstract class GLMTask  {
           double muDeriv = _glmf.linkInvDeriv(mu);
           es[i] = ws[i]*(sumr/sum-_glmf._invTheta/mu)*muDeriv; // gradient of -llh
           l -= ws[i] * (sumOper(yr, _glmf._invTheta,0)+yr*Math.log(_glmf._invTheta)+_glmf._invTheta*Math.log(mu))-
-                  sumr*Math.log(sum); // store the -llh
+                  sumr*Math.log(sum); // store the -llh, with everything.
+          l -= ws[i] * (sumOper(yr, _glmf._invTheta,0)+yr*Math.log(_glmf._invTheta)+_glmf._invTheta*Math.log(mu))-
+                  sumr*Math.log(sum); // store the -llh, with only terms related to glm parameters
         }
       }
       _likelihood = l;

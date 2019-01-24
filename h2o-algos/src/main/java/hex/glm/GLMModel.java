@@ -422,8 +422,7 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
         case negbinomial:
           ym = ym>0?ym:1e-12;
-          return (_link.equals(Link.log)?(2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((yr+_invTheta)/(yr+_invTheta)))):
-                  (2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((ym+_invTheta)/(yr+_invTheta)))));          
+          return (2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((ym+_invTheta)/(yr+_invTheta))));          
         case gamma:
           if( yr == 0 ) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);
@@ -443,7 +442,12 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
      return deviance((double)yr,(double)ym);
     }
 
-    public final double likelihood(double yr, double ym){ return .5 * deviance(yr,ym);}
+    public final double likelihood(double yr, double ym){ 
+      if (_family.equals(Family.negbinomial)) {
+        return (-_invTheta*Math.log(ym)+ (yr+_invTheta)*Math.log(ym+_invTheta));
+      }  else
+        return .5 * deviance(yr,ym);
+    }
 
     public final double linkDeriv(double x) { // note: compute an inverse of what R does
       switch(_link) {
@@ -757,7 +761,7 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           break;
         case negbinomial:
           x.dev = w*deviance(yr,ym);
-          x.l = likelihood(yr,ym);
+          x.l = w*likelihood(yr,ym);
           break;
         default:
           throw new RuntimeException("unknown family " + _family);
@@ -782,8 +786,9 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           if (yr == 0) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
         case negbinomial:
-          return (-GLMTask.sumOper(yr, _invTheta, 0)-yr*Math.log(_invTheta)-_invTheta*Math.log(ym)+
-                  (yr+_invTheta)*Math.log(ym+_invTheta));
+          return (-_invTheta*Math.log(ym)+ (yr+_invTheta)*Math.log(ym+_invTheta));
+        /*  return (-GLMTask.sumOper(yr, _invTheta, 0)-yr*Math.log(_invTheta)-_invTheta*Math.log(ym)+
+                  (yr+_invTheta)*Math.log(ym+_invTheta)); // with everything */
         case gamma:
           if (yr == 0) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);

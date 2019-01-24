@@ -825,11 +825,11 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       LineSearchSolver ls = null;
       boolean firstIter = true;
       int iterCnt = 0;
-      double current_invTheta;
+
       try {
         while (true) {
           iterCnt++;
-          if (_parms._family.equals(Family.negbinomial) && _parms._optimize_theta && !timeout() && !_job.stop_requested() && (_state._iter < _parms._max_iterations)) {
+          if (_parms._family.equals(Family.negbinomial) && _parms._optimize_theta) {
             optimizeTheta(betaCnd, glmw);
           }
           long t1 = System.currentTimeMillis();
