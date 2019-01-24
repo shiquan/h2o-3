@@ -106,7 +106,7 @@ class Metalearner {
 
         while (j.isRunning()) {
             try {
-                _job.update(j._work, "training metalearner(" + _model._parms._metalearner_algorithm + ")");
+                _job.update(j.getWork(), "training metalearner(" + _model._parms._metalearner_algorithm + ")");
                 Thread.sleep(100);
             } catch (InterruptedException e) {
             }
@@ -169,7 +169,7 @@ class Metalearner {
 
         while (j.isRunning()) {
             try {
-                _job.update(j._work, "training metalearner(" + _model._parms._metalearner_algorithm + ")");
+                _job.update(j.getWork(), "training metalearner(" + _model._parms._metalearner_algorithm + ")");
                 Thread.sleep(100);
             } catch (InterruptedException e) {
             }
@@ -232,7 +232,7 @@ class Metalearner {
 
         while (j.isRunning()) {
             try {
-                _job.update(j._work, "training metalearner(" + _model._parms._metalearner_algorithm + ")");
+                _job.update(j.getWork(), "training metalearner(" + _model._parms._metalearner_algorithm + ")");
                 Thread.sleep(100);
             } catch (InterruptedException e) {
             }
@@ -303,7 +303,7 @@ class Metalearner {
 
         while (j.isRunning()) {
             try {
-                _job.update(j._work, "training metalearner(" + _model._parms._metalearner_algorithm + ")");
+                _job.update(j.getWork(), "training metalearner(" + _model._parms._metalearner_algorithm + ")");
                 Thread.sleep(100);
             } catch (InterruptedException e) {
             }
@@ -366,7 +366,7 @@ class Metalearner {
 
         while (j.isRunning()) {
             try {
-                _job.update(j._work, "training metalearner(" + _model._parms._metalearner_algorithm + ")");
+                _job.update(j.getWork(), "training metalearner(" + _model._parms._metalearner_algorithm + ")");
                 Thread.sleep(100);
             } catch (InterruptedException e) {
             }
