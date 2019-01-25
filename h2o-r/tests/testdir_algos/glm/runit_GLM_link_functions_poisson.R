@@ -27,6 +27,8 @@ test.linkFunctions <- function() {
 	model.h2o.poisson.log <- h2o.glm(x=myX, y=myY, training_frame=h2o.data, family="poisson", link="log",alpha=0.5, lambda=0, nfolds=0)
 	model.R.poisson.log <- glm(formula=R.formula, data=R.data[,2:9], family=poisson(link=log), na.action=na.omit)
 	
+	browser()
+	
 	print("Compare model deviances for link function log")
 	deviance.h2o.log = model.h2o.poisson.log@model$training_metrics@metrics$residual_deviance / model.h2o.poisson.log@model$training_metrics@metrics$null_deviance
 	deviance.R.log = deviance(model.R.poisson.log)  / model.h2o.poisson.log@model$training_metrics@metrics$null_deviance

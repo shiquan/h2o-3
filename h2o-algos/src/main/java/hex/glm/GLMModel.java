@@ -421,8 +421,7 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           if( yr == 0 ) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
         case negbinomial:
-          ym = ym>0?ym:1e-12;
-          return (2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((ym+_invTheta)/(yr+_invTheta))));          
+          return yr==0?0:2*(_invTheta*Math.log(yr/ym)+(yr+_invTheta)*Math.log((ym+_invTheta)/(yr+_invTheta)));          
         case gamma:
           if( yr == 0 ) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);
@@ -715,8 +714,7 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           if( yr == 0 ) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
         case negbinomial:
-          ym = ym>0?ym:1e-12;
-          return 2*(_invTheta*Math.log(yr/ym)-(yr+_invTheta)*Math.log((yr+_invTheta)/(ym+_invTheta)));
+          return yr==0?0:2*(_invTheta*Math.log(yr/ym)-(yr+_invTheta)*Math.log((yr+_invTheta)/(ym+_invTheta)));
         case gamma:
           if( yr == 0 ) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);
@@ -786,9 +784,9 @@ public class GLMModel extends Model<GLMModel,GLMModel.GLMParameters,GLMModel.GLM
           if (yr == 0) return 2 * ym;
           return 2 * ((yr * Math.log(yr / ym)) - (yr - ym));
         case negbinomial:
-          return (-_invTheta*Math.log(ym)+ (yr+_invTheta)*Math.log(ym+_invTheta));
-        /*  return (-GLMTask.sumOper(yr, _invTheta, 0)-yr*Math.log(_invTheta)-_invTheta*Math.log(ym)+
-                  (yr+_invTheta)*Math.log(ym+_invTheta)); // with everything */
+         // return (-_invTheta*Math.log(ym)+ (yr+_invTheta)*Math.log(ym+_invTheta));
+          return (-GLMTask.sumOper(yr, _invTheta, 0)-yr*Math.log(_invTheta)-_invTheta*Math.log(ym)+
+                  (yr+_invTheta)*Math.log(ym+_invTheta)); // with everything 
         case gamma:
           if (yr == 0) return -2;
           return -2 * (Math.log(yr / ym) - (yr - ym) / ym);

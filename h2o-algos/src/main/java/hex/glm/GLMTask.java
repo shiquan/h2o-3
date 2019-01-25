@@ -736,16 +736,17 @@ public abstract class GLMTask  {
         } else {
           double eta = es[i];
           double mu = _glmf.linkInv(eta);
-          mu = mu==0?EPS:mu;
           double yr = ys[i];
-          double sum = mu + _glmf._invTheta;
-          double sumr = yr + _glmf._invTheta;
-          double muDeriv = _glmf.linkInvDeriv(mu);
-          es[i] = ws[i]*(sumr/sum-_glmf._invTheta/mu)*muDeriv; // gradient of -llh
-          l -= ws[i] * (sumOper(yr, _glmf._invTheta,0)+yr*Math.log(_glmf._invTheta)+_glmf._invTheta*Math.log(mu))-
-                  sumr*Math.log(sum); // store the -llh, with everything.
-          l -= ws[i] * (sumOper(yr, _glmf._invTheta,0)+yr*Math.log(_glmf._invTheta)+_glmf._invTheta*Math.log(mu))-
-                  sumr*Math.log(sum); // store the -llh, with only terms related to glm parameters
+          if ((mu > 0) && (yr > 0)) {  // response and predictions are all nonzeros
+            double sum = mu + _glmf._invTheta;
+            double sumr = yr + _glmf._invTheta;
+            double muDeriv = _glmf.linkInvDeriv(mu);
+            es[i] = ws[i] * (sumr / sum - _glmf._invTheta / mu) * muDeriv; // gradient of -llh
+            l -= ws[i] * (sumOper(yr, _glmf._invTheta, 0) + yr * Math.log(_glmf._invTheta) + _glmf._invTheta * Math.log(mu)) -
+                    sumr * Math.log(sum); // store the -llh, with everything.
+          } else if ((mu > 0) && (yr==0)) {
+            
+          } // no update otherwise
         }
       }
       _likelihood = l;

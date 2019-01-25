@@ -194,7 +194,7 @@ public class GLMMetricBuilder extends MetricBuilderSupervised<GLMMetricBuilder> 
         _aic = Double.NaN;
         break;
       case negbinomial:
-        _aic = 2*_sumLLH/_wcount;  // todo: fix me
+        _aic = 2*_sumLLH;
         break;
       default:
         assert false : "missing implementation for family " + _glmf._family;
