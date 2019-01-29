@@ -97,7 +97,7 @@ public final class PersistS3 extends Persist {
       if (s3Credentials != null && s3Credentials._secretKeyId != null && s3Credentials._secretAccessKey != null) {
         return new BasicAWSCredentials(s3Credentials._secretKeyId, s3Credentials._secretAccessKey);
       } else {
-        throw new AmazonClientException("No Amazon S3 credentials set directly.");
+        throw new IllegalStateException("No Amazon S3 credentials set directly.");
       }
     }
 
